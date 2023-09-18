@@ -1,64 +1,73 @@
 ﻿using System;
 using Microsoft.Xna.Framework;
+using Mono.Cecil.Cil;
 using Monocle;
+using MonoMod.Cil;
 using MonoMod.Utils;
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 public static class EngineExtensions {
-    private static readonly TimeSpan FIXED_ELAPSED_TIME = TimeSpan.FromTicks(166667L);
-
-    private static TimeSpan accumulatedTime = TimeSpan.Zero;
-    private static float fixedDeltaTime;
-    private static float rawFixedDeltaTime;
+    public static TimeSpan FixedElapsedTime { get; } = TimeSpan.FromTicks(166667L);
+    public static TimeSpan Time { get; private set; }
+    public static TimeSpan FixedTime { get; private set; }
+    public static float TimeDifference => (float) (Time - FixedTime).TotalSeconds;
+    public static float TimeInterp => (float) (TimeDifference / FixedElapsedTime.TotalSeconds);
 
     public static void Load() {
         On.Monocle.Engine.Update += Engine_Update;
+        IL.Monocle.Engine.Update += Engine_Update_IL;
     }
 
     public static void Unload() {
         On.Monocle.Engine.Update -= Engine_Update;
+        IL.Monocle.Engine.Update -= Engine_Update_IL;
     }
 
     public static void SetFramerate(this Engine engine, int frameRate)
         => engine.TargetElapsedTime = TimeSpan.FromTicks(166667L * 60L / frameRate);
 
-    private static void FixedUpdate(this Engine engine, GameTime gameTime) {
-        var dynamicData = DynamicData.For(engine);
-        var scene = dynamicData.Get<Scene>("scene");
-        
-        rawFixedDeltaTime = (float) gameTime.ElapsedGameTime.TotalSeconds;
-        fixedDeltaTime = rawFixedDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
-        
-        dynamicData.Set("DeltaTime", fixedDeltaTime);
-        dynamicData.Set("RawDeltaTime", rawFixedDeltaTime);
-
-        if (Engine.FreezeTimer > 0f || scene == null)
+    private static void DoFixedUpdates(Engine engine) {
+        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled || FixedTime + FixedElapsedTime > Time)
             return;
         
-        if (scene is Level level)
-            level.FixedUpdate();
-        else
-            scene.FixedUpdate();
+        var dynamicData = DynamicData.For(engine);
+        var scene = dynamicData.Get<Scene>("scene");
+        float rawDeltaTime = dynamicData.Get<float>("RawDeltaTime");
+        float deltaTime = dynamicData.Get<float>("DeltaTime");
+        float rawFixedDeltaTime = (float) FixedElapsedTime.TotalSeconds;
+        float fixedDeltaTime = rawFixedDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
+
+        dynamicData.Set("RawDeltaTime", rawFixedDeltaTime);
+        dynamicData.Set("DeltaTime", fixedDeltaTime);
+        
+        while (FixedTime + FixedElapsedTime <= Time) {
+            FixedTime += FixedElapsedTime;
+            
+            if (scene is Level level)
+                level.FixedUpdate();
+            else
+                scene.FixedUpdate();
+        }
+        
+        dynamicData.Set("RawDeltaTime", rawDeltaTime);
+        dynamicData.Set("DeltaTime", deltaTime);
     }
 
     private static void Engine_Update(On.Monocle.Engine.orig_Update update, Engine engine, GameTime gameTime) {
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled) {
-            update(engine, gameTime);
-            
-            return;
-        }
-
-        accumulatedTime += gameTime.ElapsedGameTime;
-        
-        while (accumulatedTime >= FIXED_ELAPSED_TIME) {
-            long flooredTicks = gameTime.TotalGameTime.Ticks;
-
-            flooredTicks -= flooredTicks % FIXED_ELAPSED_TIME.Ticks;
-            accumulatedTime -= FIXED_ELAPSED_TIME;
-            engine.FixedUpdate(new GameTime(TimeSpan.FromTicks(flooredTicks), FIXED_ELAPSED_TIME, gameTime.IsRunningSlowly));
-        }
-        
+        Time = gameTime.TotalGameTime;
         update(engine, gameTime);
+        
+        while (FixedTime + FixedElapsedTime <= Time)
+            FixedTime += FixedElapsedTime;
+    }
+
+    private static void Engine_Update_IL(ILContext il) {
+        var cursor = new ILCursor(il);
+        
+        cursor.GotoNext(MoveType.After, instr => instr.MatchCallvirt<Scene>(nameof(Scene.BeforeUpdate)));
+
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Call, typeof(EngineExtensions).GetMethodUnconstrained(nameof(DoFixedUpdates)));
     }
 }

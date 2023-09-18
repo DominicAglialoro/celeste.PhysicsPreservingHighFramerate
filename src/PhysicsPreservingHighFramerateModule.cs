@@ -21,7 +21,9 @@ public class PhysicsPreservingHighFramerateModule : EverestModule {
 
     public override void Load() {
         EngineExtensions.Load();
+        EntityExtensions.Load();
         EntityListExtensions.Load();
+        GraphicsComponentExtensions.Load();
         LevelExtensions.Load();
         PlayerExtensions.Load();
         SceneExtensions.Load();
@@ -29,9 +31,11 @@ public class PhysicsPreservingHighFramerateModule : EverestModule {
 
     public override void Unload() {
         EngineExtensions.Unload();
+        EntityExtensions.Unload();
         EntityListExtensions.Unload();
+        GraphicsComponentExtensions.Unload();
         LevelExtensions.Unload();
-        PlayerExtensions.Load();
+        PlayerExtensions.Unload();
         SceneExtensions.Unload();
     }
 }
