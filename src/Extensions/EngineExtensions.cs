@@ -8,8 +8,6 @@ namespace Celeste.Mod.PhysicsPreservingHighFramerate;
 public static class EngineExtensions {
     private static readonly TimeSpan FIXED_ELAPSED_TIME = TimeSpan.FromTicks(166667L);
     
-    public static float RawSmoothDeltaTime { get; private set; }
-    public static float SmoothDeltaTime { get; private set; }
     public static float TimeDifference => (float) (smoothTime - fixedTime).TotalSeconds;
     public static float TimeInterp => (float) (TimeDifference / FIXED_ELAPSED_TIME.TotalSeconds);
     
@@ -26,6 +24,15 @@ public static class EngineExtensions {
     private static void Engine_Update(On.Monocle.Engine.orig_Update update, Engine engine, GameTime gameTime) {
         smoothTime = gameTime.TotalGameTime;
         
+        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled) {
+            update(engine, gameTime);
+            
+            while (fixedTime + FIXED_ELAPSED_TIME <= smoothTime)
+                fixedTime += FIXED_ELAPSED_TIME;
+            
+            return;
+        }
+
         while (fixedTime + FIXED_ELAPSED_TIME <= smoothTime) {
             fixedTime += FIXED_ELAPSED_TIME;
             update(engine, new GameTime(fixedTime, FIXED_ELAPSED_TIME, gameTime.IsRunningSlowly));
@@ -34,8 +41,11 @@ public static class EngineExtensions {
         var dynamicData = DynamicData.For(engine);
         var scene = dynamicData.Get<Scene>("scene");
         
-        RawSmoothDeltaTime = (float) gameTime.ElapsedGameTime.TotalSeconds;
-        SmoothDeltaTime = RawSmoothDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
+        float rawSmoothDeltaTime = (float) gameTime.ElapsedGameTime.TotalSeconds;
+        float smoothDeltaTime = rawSmoothDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
+        
+        dynamicData.Set("RawDeltaTime", rawSmoothDeltaTime);
+        dynamicData.Set("DeltaTime", smoothDeltaTime);
         
         if (scene is Level level)
             level.SmoothUpdate();
