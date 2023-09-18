@@ -1,10 +1,8 @@
 ﻿using Monocle;
 
-namespace Celeste.Mod.PhysicsPreservingHighFramerate.Other; 
+namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 public interface IUpdateOverride {
-    Entity Entity { get; }
-    
-    void FixedUpdate();
-    void SmoothUpdate();
+    void Update(Entity entity);
+    void FixedUpdate(Entity entity);
 }
