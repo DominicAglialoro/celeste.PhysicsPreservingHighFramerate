@@ -23,8 +23,7 @@ public static class GraphicsComponentExtensions {
         if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
             return get_RenderPosition(graphicsComponent);
 
-        var entity = graphicsComponent.Entity;
-        var renderPosition = entity?.GetRenderPosition() ?? Vector2.Zero;
+        var renderPosition = graphicsComponent.Entity?.GetRenderPosition() ?? Vector2.Zero;
 
         return renderPosition + graphicsComponent.Position;
     }
@@ -36,8 +35,7 @@ public static class GraphicsComponentExtensions {
             return;
         }
 
-        var entity = graphicsComponent.Entity;
-        var renderPosition = entity?.GetRenderPosition() ?? Vector2.Zero;
+        var renderPosition = graphicsComponent.Entity?.GetRenderPosition() ?? Vector2.Zero;
 
         graphicsComponent.Position = value - renderPosition;
     }

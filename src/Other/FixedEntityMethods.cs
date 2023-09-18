@@ -2,8 +2,8 @@
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
-public class FixedUpdateOverride : IUpdateOverride {
-    public static FixedUpdateOverride Instance { get; } = new();
+public class FixedEntityMethods : EntityMethods {
+    public static FixedEntityMethods Instance { get; } = new();
     
     public void Update(Entity entity) { }
 
