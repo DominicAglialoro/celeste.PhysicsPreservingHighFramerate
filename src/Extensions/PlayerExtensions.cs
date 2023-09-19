@@ -6,56 +6,41 @@ using MonoMod.Utils;
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 public static class PlayerExtensions {
-    public static void Load() {
-        typeof(Player).AddEntityMethods(new PlayerEntityMethods());
-        On.Celeste.Player.Update += Player_Update;
+    public static void Load() => On.Celeste.Player.ctor += Player_ctor;
+
+    public static void Unload() => On.Celeste.Player.ctor -= Player_ctor;
+
+    private static void Player_ctor(On.Celeste.Player.orig_ctor ctor, Player player, Vector2 position, PlayerSpriteMode spritemode) {
+        ctor(player, position, spritemode);
+        player.Add(new PlayerInterpolation());
     }
 
-    public static void Unload() {
-        typeof(Player).RemoveEntityMethods();
-        On.Celeste.Player.Update -= Player_Update;
-    }
+    private class PlayerInterpolation : Interpolation {
+        private Player player;
+        private Vector2 position;
 
-    private static void Player_Update(On.Celeste.Player.orig_Update update, Player player) {
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled) {
-            update(player);
-            
-            return;
+        public override void Added(Entity entity) {
+            base.Added(entity);
+            player = (Player) entity;
         }
-        
-        var camera = ((Level) player.Scene).Camera;
-        var cameraPosition = camera.Position;
 
-        update(player);
-        camera.Position = cameraPosition;
-    }
+        protected override void DoStore() => position = player.Position;
 
-    private class PlayerEntityMethods : EntityMethods {
-        public override void SmoothUpdate(Entity entity) {
-            var player = (Player) entity;
+        protected override void DoRestore() => player.Position = position;
 
-            DynamicData.For(player).Set("renderPosition", player.Project(player.Speed, EngineExtensions.TimeDifference));
+        protected override void DoSmoothUpdate() {
+            var dynamicData = DynamicData.For(player);
 
-            if (!player.InControl && !player.ForceCameraUpdate)
+            if (player.StateMachine.State != 22) {
+                player.Position = player.Extrapolate(position, player.Speed, EngineExtensions.TimeDifference);
+
                 return;
-
-            var camera = ((Level) player.Scene).Camera;
-
-            if (player.StateMachine.State == 18)
-                camera.Position = player.CameraTarget;
-            else {
-                var cameraPosition = camera.Position;
-                float factor = player.StateMachine.State == 20 ? 8f : 1f;
-
-                camera.Position += (player.CameraTarget - cameraPosition) * (1f - (float) Math.Pow(0.01f / factor, Engine.DeltaTime));
             }
-        }
-
-        public override Vector2 GetRenderPosition(Entity entity) {
-            if (!((Level) entity.Scene).InMotion())
-                return entity.Position;
             
-            return DynamicData.For(entity).Get<Vector2?>("renderPosition") ?? entity.Position;
+            var difference = dynamicData.Get<Vector2>("attractTo") - player.ExactPosition;
+            var speed = 200f * difference.SafeNormalize();
+
+            player.Position = player.Extrapolate(position, speed, EngineExtensions.TimeDifference, difference.Length());
         }
     }
 }
