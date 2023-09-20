@@ -1,46 +1,29 @@
-﻿using System;
-using Microsoft.Xna.Framework;
+﻿using Microsoft.Xna.Framework;
 using Monocle;
 using MonoMod.Utils;
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 public static class PlayerExtensions {
-    public static void Load() => On.Celeste.Player.ctor += Player_ctor;
+    public static void Load() => On.Celeste.Player.Added += Player_added;
 
-    public static void Unload() => On.Celeste.Player.ctor -= Player_ctor;
+    public static void Unload() => On.Celeste.Player.Added -= Player_added;
 
-    private static void Player_ctor(On.Celeste.Player.orig_ctor ctor, Player player, Vector2 position, PlayerSpriteMode spritemode) {
-        ctor(player, position, spritemode);
-        player.Add(new PlayerInterpolation());
+    private static void Player_added(On.Celeste.Player.orig_Added added, Player player, Scene scene) {
+        added(player, scene);
+        player.Add(new SimplePositionInterpolation(GetSmoothPosition));
     }
 
-    private class PlayerInterpolation : Interpolation {
-        private Player player;
-        private Vector2 position;
+    private static Vector2 GetSmoothPosition(Entity entity, Vector2 position) {
+        var player = (Player) entity;
+        var dynamicData = DynamicData.For(player);
 
-        public override void Added(Entity entity) {
-            base.Added(entity);
-            player = (Player) entity;
-        }
+        if (player.StateMachine.State != 22)
+            return player.Extrapolate(position, player.Speed, EngineExtensions.TimeDifference);
 
-        protected override void DoStore() => position = player.Position;
+        var difference = dynamicData.Get<Vector2>("attractTo") - player.ExactPosition;
+        var speed = 200f * difference.SafeNormalize();
 
-        protected override void DoRestore() => player.Position = position;
-
-        protected override void DoSmoothUpdate() {
-            var dynamicData = DynamicData.For(player);
-
-            if (player.StateMachine.State != 22) {
-                player.Position = player.Extrapolate(position, player.Speed, EngineExtensions.TimeDifference);
-
-                return;
-            }
-            
-            var difference = dynamicData.Get<Vector2>("attractTo") - player.ExactPosition;
-            var speed = 200f * difference.SafeNormalize();
-
-            player.Position = player.Extrapolate(position, speed, EngineExtensions.TimeDifference, difference.Length());
-        }
+        return player.Extrapolate(position, speed, EngineExtensions.TimeDifference, difference.Length());
     }
 }

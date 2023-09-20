@@ -1,6 +1,4 @@
-﻿using System;
-using Microsoft.Xna.Framework;
-using Monocle;
+﻿using Microsoft.Xna.Framework;
 using MonoMod.Utils;
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 

@@ -1,5 +1,4 @@
-﻿using Microsoft.Xna.Framework;
-using Monocle;
+﻿using Monocle;
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
@@ -17,6 +16,8 @@ public abstract class Interpolation : Component {
     public void Restore() {
         if (stored)
             DoRestore();
+
+        stored = false;
     }
 
     public void SmoothUpdate() {
