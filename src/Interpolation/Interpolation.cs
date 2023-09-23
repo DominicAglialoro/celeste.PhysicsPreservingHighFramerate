@@ -7,29 +7,32 @@ namespace Celeste.Mod.PhysicsPreservingHighFramerate;
 public class Interpolation : Component {
     private Vector2 startPosition;
     private Vector2 endPosition;
-    private bool stored;
+    private bool doInterpolate;
     
     public Interpolation() : base(true, false) { }
 
+    public override void EntityAdded(Scene scene) => Reset();
+
     public void BeforeUpdate() {
-        if (stored)
-            Entity.Position = endPosition;
+        if (!doInterpolate)
+            return;
+        
+        Entity.Position = endPosition;
+        startPosition = Entity.Position;
     }
 
     public void AfterUpdate() {
-        if (!Entity.Active || !Entity.Visible) {
-            stored = false;
-            
-            return;
-        }
+        if (!doInterpolate)
+            startPosition = Entity.Position;
         
-        startPosition = stored ? endPosition : Entity.Position;
         endPosition = Entity.Position;
-        stored = true;
+        doInterpolate = true;
     }
 
-    public void SmoothUpdate() {
-        if (stored)
+    public void Reset() => doInterpolate = false;
+
+    public void Interpolate() {
+        if (doInterpolate)
             Entity.Position = Vector2.Lerp(startPosition, endPosition, EngineExtensions.TimeInterp);
     }
 }

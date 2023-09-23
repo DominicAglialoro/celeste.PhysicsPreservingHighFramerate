@@ -40,15 +40,15 @@ public static class EngineExtensions {
 
         var dynamicData = DynamicData.For(engine);
         var scene = dynamicData.Get<Scene>("scene");
-
-        if (scene is not Level level)
-            return;
-        
         float rawSmoothDeltaTime = (float) gameTime.ElapsedGameTime.TotalSeconds;
         float smoothDeltaTime = rawSmoothDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
-        
+
         dynamicData.Set("RawDeltaTime", rawSmoothDeltaTime);
         dynamicData.Set("DeltaTime", smoothDeltaTime);
-        level.SmoothUpdate();
+
+        if (scene is Level level)
+            level.SmoothUpdate();
+        else
+            scene?.SmoothUpdate();
     }
 }
