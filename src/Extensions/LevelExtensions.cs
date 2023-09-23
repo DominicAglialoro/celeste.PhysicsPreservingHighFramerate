@@ -50,7 +50,7 @@ public static class LevelExtensions {
         
         if (PhysicsPreservingHighFramerateModule.Settings.Enabled) {
             foreach (var component in level.Tracker.GetComponents<Interpolation>())
-                ((Interpolation) component).Restore();
+                ((Interpolation) component).BeforeUpdate();
             
             level.Camera.Position = dynamicData.Get<Vector2?>("cameraPosition") ?? level.Camera.Position;
             dynamicData.Set("previousCameraPosition", level.Camera.Position);
@@ -67,6 +67,6 @@ public static class LevelExtensions {
         dynamicData.Set("cameraPosition", level.Camera.Position);
 
         foreach (var component in level.Tracker.GetComponents<Interpolation>())
-            ((Interpolation) component).Store();
+            ((Interpolation) component).AfterUpdate();
     }
 }

@@ -1,33 +1,35 @@
-﻿using Monocle;
+﻿using Microsoft.Xna.Framework;
+using Monocle;
 
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 [Tracked(true)]
-public abstract class Interpolation : Component {
+public class Interpolation : Component {
+    private Vector2 startPosition;
+    private Vector2 endPosition;
     private bool stored;
     
-    protected Interpolation() : base(true, false) { }
+    public Interpolation() : base(true, false) { }
 
-    public void Store() {
-        DoStore();
-        stored = true;
+    public void BeforeUpdate() {
+        if (stored)
+            Entity.Position = endPosition;
     }
 
-    public void Restore() {
-        if (stored)
-            DoRestore();
-
-        stored = false;
+    public void AfterUpdate() {
+        if (!Entity.Active || !Entity.Visible) {
+            stored = false;
+            
+            return;
+        }
+        
+        startPosition = stored ? endPosition : Entity.Position;
+        endPosition = Entity.Position;
+        stored = true;
     }
 
     public void SmoothUpdate() {
         if (stored)
-            DoSmoothUpdate();
+            Entity.Position = Vector2.Lerp(startPosition, endPosition, EngineExtensions.TimeInterp);
     }
-
-    protected virtual void DoStore() { }
-
-    protected virtual void DoRestore() { }
-
-    protected virtual void DoSmoothUpdate() { }
 }
