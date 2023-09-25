@@ -24,11 +24,12 @@ public static class EngineExtensions {
     private static void Engine_Update(On.Monocle.Engine.orig_Update update, Engine engine, GameTime gameTime) {
         smoothTime = gameTime.TotalGameTime;
         
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled) {
+        var dynamicData = DynamicData.For(engine);
+        var scene = dynamicData.Get<Scene>("scene");
+        
+        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled || scene is not Level level) {
             update(engine, gameTime);
-            
-            while (fixedTime + FIXED_ELAPSED_TIME <= smoothTime)
-                fixedTime += FIXED_ELAPSED_TIME;
+            fixedTime = smoothTime;
             
             return;
         }
@@ -38,17 +39,11 @@ public static class EngineExtensions {
             update(engine, new GameTime(fixedTime, FIXED_ELAPSED_TIME, gameTime.IsRunningSlowly));
         }
 
-        var dynamicData = DynamicData.For(engine);
-        var scene = dynamicData.Get<Scene>("scene");
         float rawSmoothDeltaTime = (float) gameTime.ElapsedGameTime.TotalSeconds;
         float smoothDeltaTime = rawSmoothDeltaTime * Engine.TimeRate * Engine.TimeRateB * dynamicData.Invoke<float>("GetTimeRateComponentMultiplier", scene);
 
         dynamicData.Set("RawDeltaTime", rawSmoothDeltaTime);
         dynamicData.Set("DeltaTime", smoothDeltaTime);
-
-        if (scene is Level level)
-            level.SmoothUpdate();
-        else
-            scene?.SmoothUpdate();
+        level.SmoothUpdate();
     }
 }

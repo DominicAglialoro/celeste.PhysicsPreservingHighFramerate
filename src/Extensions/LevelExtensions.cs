@@ -49,6 +49,21 @@ public static class LevelExtensions {
             DynamicData.For(level.RendererList).Invoke("Update");
     }
 
+    private static void UpdateRenderersIfModDisabled(RendererList rendererList) {
+        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
+            DynamicData.For(rendererList).Invoke("Update");
+    }
+
+    private static void OverrideBaseUpdate(Level level) {
+        if (level.Paused)
+            return;
+        
+        DynamicData.For(level.Entities).Invoke("Update");
+
+        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
+            DynamicData.For(level.RendererList).Invoke("Update");
+    }
+
     private static void Level_Update(On.Celeste.Level.orig_Update update, Level level) {
         var dynamicData = DynamicData.For(level);
 
@@ -92,7 +107,13 @@ public static class LevelExtensions {
 
         while (cursor.TryGotoNext(instr => instr.MatchCallvirt<RendererList>("Update"))) {
             cursor.Remove();
-            cursor.Emit(OpCodes.Pop);
+            cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(UpdateRenderersIfModDisabled)));
         }
+
+        cursor.Index = 0;
+        cursor.GotoNext(instr => instr.MatchCall<Scene>("Update"));
+
+        cursor.Remove();
+        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(OverrideBaseUpdate)));
     }
 }
