@@ -9,13 +9,14 @@ namespace Celeste.Mod.PhysicsPreservingHighFramerate;
 public static class LevelExtensions {
     public static void Load() {
         On.Celeste.Level.Update += Level_Update;
-        IL.Celeste.Level.Update += Level_Update_IL;
+        IL.Celeste.Level.Update += Level_Update_Il;
         On.Celeste.Level.LoadLevel += Level_LoadLevel;
     }
 
     public static void Unload() {
         On.Celeste.Level.Update -= Level_Update;
-        IL.Celeste.Level.Update -= Level_Update_IL;
+        IL.Celeste.Level.Update -= Level_Update_Il;
+        On.Celeste.Level.LoadLevel -= Level_LoadLevel;
     }
 
     public static void SmoothUpdate(this Level level) {
@@ -25,14 +26,7 @@ public static class LevelExtensions {
             foreach (var component in level.Tracker.GetComponents<Interpolation>())
                 ((Interpolation) component).Interpolate();
 
-            if (dynamicData.Get<bool?>("doCameraInterpolate") is true) {
-                var camera = level.Camera;
-
-                camera.Position = Vector2.Lerp(
-                    dynamicData.Get<Vector2?>("startCameraPosition") ?? camera.Position,
-                    dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position,
-                    EngineExtensions.TimeInterp);
-            }
+            level.InterpolateCamera(dynamicData);
 
             if (dynamicData.Get<bool>("updateHair")) {
                 foreach (var component in level.Tracker.GetComponents<PlayerHair>()) {
@@ -54,7 +48,7 @@ public static class LevelExtensions {
     private static void BeforeInterpolationUpdate(this Level level) {
         var dynamicData = DynamicData.For(level);
         
-        if (!dynamicData.Get<bool?>("doCameraInterpolate") is not true)
+        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
             return;
         
         var camera = level.Camera;
@@ -67,7 +61,7 @@ public static class LevelExtensions {
         var dynamicData = DynamicData.For(level);
         var camera = level.Camera;
         
-        if (!dynamicData.Get<bool?>("doCameraInterpolate") is not true)
+        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
             dynamicData.Set("startCameraPosition", camera.Position);
         
         dynamicData.Set("endCameraPosition", camera.Position);
@@ -75,6 +69,18 @@ public static class LevelExtensions {
     }
 
     private static void ResetInterpolation(this Level level) => DynamicData.For(level).Set("doCameraInterpolate", false);
+
+    private static void InterpolateCamera(this Level level, DynamicData dynamicData) {
+        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
+            return;
+        
+        var camera = level.Camera;
+
+        camera.Position = Vector2.Lerp(
+            dynamicData.Get<Vector2?>("startCameraPosition") ?? camera.Position,
+            dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position,
+            EngineExtensions.TimeInterp);
+    }
 
     private static void UpdateRenderersIfModDisabled(RendererList rendererList) {
         if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
@@ -127,10 +133,13 @@ public static class LevelExtensions {
                 ((Interpolation) component).Reset();
         }
         
-        level.AfterInterpolationUpdate();
+        if (level.FrozenOrPaused)
+            level.ResetInterpolation();
+        else
+            level.AfterInterpolationUpdate();
     }
 
-    private static void Level_Update_IL(ILContext il) {
+    private static void Level_Update_Il(ILContext il) {
         var cursor = new ILCursor(il);
 
         while (cursor.TryGotoNext(instr => instr.MatchCallvirt<RendererList>("Update"))) {
