@@ -7,16 +7,18 @@ namespace Celeste.Mod.PhysicsPreservingHighFramerate;
 
 public static class EngineExtensions {
     private static readonly TimeSpan FIXED_ELAPSED_TIME = TimeSpan.FromTicks(166667L);
-    
-    public static float TimeDifference => (float) (smoothTime - fixedTime).TotalSeconds;
-    public static float TimeInterp => (float) (TimeDifference / FIXED_ELAPSED_TIME.TotalSeconds);
+
+    public static float TimeInterp => (float) ((smoothTime - fixedTime).TotalSeconds / updateInterval.TotalSeconds);
     
     private static TimeSpan smoothTime;
     private static TimeSpan fixedTime;
+    private static TimeSpan updateInterval;
 
     public static void Load() => On.Monocle.Engine.Update += Engine_Update;
 
     public static void Unload() => On.Monocle.Engine.Update -= Engine_Update;
+
+    public static void SetGameSpeed(int gameSpeed) => updateInterval = new TimeSpan(FIXED_ELAPSED_TIME.Ticks * 10 / gameSpeed);
 
     public static void SetFramerate(this Engine engine, int frameRate)
         => engine.TargetElapsedTime = TimeSpan.FromTicks(166667L * 60L / frameRate);
@@ -26,16 +28,17 @@ public static class EngineExtensions {
         
         var dynamicData = DynamicData.For(engine);
         var scene = dynamicData.Get<Scene>("scene");
+        var settings = PhysicsPreservingHighFramerateModule.Settings;
         
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled || scene is not Level level) {
+        if (!settings.Enabled || scene is not Level level) {
             update(engine, gameTime);
             fixedTime = smoothTime;
             
             return;
         }
 
-        while (fixedTime + FIXED_ELAPSED_TIME <= smoothTime) {
-            fixedTime += FIXED_ELAPSED_TIME;
+        while (fixedTime + updateInterval <= smoothTime) {
+            fixedTime += updateInterval;
             update(engine, new GameTime(fixedTime, FIXED_ELAPSED_TIME, gameTime.IsRunningSlowly));
         }
 

@@ -10,6 +10,7 @@ public static class LevelExtensions {
     public static void Load() {
         On.Celeste.Level.Update += Level_Update;
         IL.Celeste.Level.Update += Level_Update_IL;
+        On.Celeste.Level.LoadLevel += Level_LoadLevel;
     }
 
     public static void Unload() {
@@ -24,12 +25,13 @@ public static class LevelExtensions {
             foreach (var component in level.Tracker.GetComponents<Interpolation>())
                 ((Interpolation) component).Interpolate();
 
-            if (!level.FrozenOrPaused) {
+            if (dynamicData.Get<bool?>("doCameraInterpolate") is true) {
                 var camera = level.Camera;
-                var startCameraPosition = dynamicData.Get<Vector2?>("startCameraPosition") ?? level.Camera.Position;
-                var endCameraPosition = dynamicData.Get<Vector2?>("endCameraPosition") ?? level.Camera.Position;
 
-                camera.Position = Vector2.Lerp(startCameraPosition, endCameraPosition, EngineExtensions.TimeInterp);
+                camera.Position = Vector2.Lerp(
+                    dynamicData.Get<Vector2?>("startCameraPosition") ?? camera.Position,
+                    dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position,
+                    EngineExtensions.TimeInterp);
             }
 
             if (dynamicData.Get<bool>("updateHair")) {
@@ -48,6 +50,31 @@ public static class LevelExtensions {
         if (!level.FrozenOrPaused)
             DynamicData.For(level.RendererList).Invoke("Update");
     }
+
+    private static void BeforeInterpolationUpdate(this Level level) {
+        var dynamicData = DynamicData.For(level);
+        
+        if (!dynamicData.Get<bool?>("doCameraInterpolate") is not true)
+            return;
+        
+        var camera = level.Camera;
+
+        camera.Position = dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position;
+        dynamicData.Set("startCameraPosition", camera.Position);
+    }
+
+    private static void AfterInterpolationUpdate(this Level level) {
+        var dynamicData = DynamicData.For(level);
+        var camera = level.Camera;
+        
+        if (!dynamicData.Get<bool?>("doCameraInterpolate") is not true)
+            dynamicData.Set("startCameraPosition", camera.Position);
+        
+        dynamicData.Set("endCameraPosition", camera.Position);
+        dynamicData.Set("doCameraInterpolate", true);
+    }
+
+    private static void ResetInterpolation(this Level level) => DynamicData.For(level).Set("doCameraInterpolate", false);
 
     private static void UpdateRenderersIfModDisabled(RendererList rendererList) {
         if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
@@ -71,6 +98,7 @@ public static class LevelExtensions {
             foreach (var component in level.Tracker.GetComponents<Interpolation>())
                 ((Interpolation) component).Reset();
 
+            level.ResetInterpolation();
             update(level);
 
             return;
@@ -79,15 +107,13 @@ public static class LevelExtensions {
         foreach (var component in level.Tracker.GetComponents<Interpolation>())
             ((Interpolation) component).BeforeUpdate();
 
-        level.Camera.Position = dynamicData.Get<Vector2?>("endCameraPosition") ?? level.Camera.Position;
-        dynamicData.Set("startCameraPosition", level.Camera.Position);
+        level.BeforeInterpolationUpdate();
 
         bool updateHair = dynamicData.Get<bool>("updateHair");
 
         dynamicData.Set("updateHair", false);
         update(level);
         dynamicData.Set("updateHair", updateHair);
-        dynamicData.Set("endCameraPosition", level.Camera.Position);
 
         foreach (var component in level.Tracker.GetComponents<Interpolation>()) {
             var entity = component.Entity;
@@ -100,6 +126,8 @@ public static class LevelExtensions {
             else
                 ((Interpolation) component).Reset();
         }
+        
+        level.AfterInterpolationUpdate();
     }
 
     private static void Level_Update_IL(ILContext il) {
@@ -115,5 +143,10 @@ public static class LevelExtensions {
 
         cursor.Remove();
         cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(OverrideBaseUpdate)));
+    }
+
+    private static void Level_LoadLevel(On.Celeste.Level.orig_LoadLevel loadLevel, Level level, Player.IntroTypes playerintro, bool isfromloader) {
+        level.ResetInterpolation();
+        loadLevel(level, playerintro, isfromloader);
     }
 }

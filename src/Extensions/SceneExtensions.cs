@@ -9,6 +9,7 @@ public static class SceneExtensions {
 
     private static void Scene_Begin(On.Monocle.Scene.orig_Begin begin, Scene scene) {
         Celeste.Instance.SetFramerate(PhysicsPreservingHighFramerateModule.Settings.GetFramerate());
+        EngineExtensions.SetGameSpeed(PhysicsPreservingHighFramerateModule.Settings.GetGameSpeed());
         begin(scene);
     }
 }
