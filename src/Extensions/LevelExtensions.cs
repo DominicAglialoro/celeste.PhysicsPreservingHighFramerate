@@ -44,11 +44,12 @@ public static class LevelExtensions {
                 
                 timeAccumulator -= ONE_OVER_SIXTY;
             }
+            
+            engineData.Set("RawDeltaTime", rawDeltaTime);
+            engineData.Set("DeltaTime", deltaTime);
         }
         
         levelData.Set("timeAccumulator", timeAccumulator);
-        engineData.Set("RawDeltaTime", rawDeltaTime);
-        engineData.Set("DeltaTime", deltaTime);
 
         DynamicData.For(level.RendererList).Invoke("Update");
     }
