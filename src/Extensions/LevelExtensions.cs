@@ -1,5 +1,4 @@
-﻿using Microsoft.Xna.Framework;
-using Mono.Cecil.Cil;
+﻿using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
 using MonoMod.Utils;
@@ -7,155 +6,73 @@ using MonoMod.Utils;
 namespace Celeste.Mod.PhysicsPreservingHighFramerate; 
 
 public static class LevelExtensions {
-    public static void Load() {
-        On.Celeste.Level.Update += Level_Update;
-        IL.Celeste.Level.Update += Level_Update_Il;
-        On.Celeste.Level.LoadLevel += Level_LoadLevel;
-    }
+    private const float ONE_OVER_SIXTY = (float) (166667L * 1E-07);
+    
+    public static void Load() => IL.Celeste.Level.Update += Level_Update_Il;
 
-    public static void Unload() {
-        On.Celeste.Level.Update -= Level_Update;
-        IL.Celeste.Level.Update -= Level_Update_Il;
-        On.Celeste.Level.LoadLevel -= Level_LoadLevel;
-    }
+    public static void Unload() => IL.Celeste.Level.Update -= Level_Update_Il;
 
-    public static void SmoothUpdate(this Level level) {
-        var dynamicData = DynamicData.For(level);
-
-        if (dynamicData.Get<float>("unpauseTimer") <= 0f && level.Overlay == null && !level.SkippingCutscene) {
-            foreach (var component in level.Tracker.GetComponents<Interpolation>())
-                ((Interpolation) component).Interpolate();
-
-            level.InterpolateCamera(dynamicData);
-
-            if (dynamicData.Get<bool>("updateHair")) {
-                foreach (var component in level.Tracker.GetComponents<PlayerHair>()) {
-                    if (component.Active && component.Entity.Active)
-                        ((PlayerHair) component).AfterUpdate();
-                }
-
-                if (level.FrozenOrPaused)
-                    dynamicData.Set("updateHair", false);
-            }
-            else if (!level.FrozenOrPaused)
-                dynamicData.Set("updateHair", true);
-        }
-        
-        if (!level.FrozenOrPaused)
-            DynamicData.For(level.RendererList).Invoke("Update");
-    }
-
-    private static void BeforeInterpolationUpdate(this Level level) {
-        var dynamicData = DynamicData.For(level);
-        
-        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
-            return;
-        
-        var camera = level.Camera;
-
-        camera.Position = dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position;
-        dynamicData.Set("startCameraPosition", camera.Position);
-    }
-
-    private static void AfterInterpolationUpdate(this Level level) {
-        var dynamicData = DynamicData.For(level);
-        var camera = level.Camera;
-        
-        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
-            dynamicData.Set("startCameraPosition", camera.Position);
-        
-        dynamicData.Set("endCameraPosition", camera.Position);
-        dynamicData.Set("doCameraInterpolate", true);
-    }
-
-    private static void ResetInterpolation(this Level level) => DynamicData.For(level).Set("doCameraInterpolate", false);
-
-    private static void InterpolateCamera(this Level level, DynamicData dynamicData) {
-        if (dynamicData.Get<bool?>("doCameraInterpolate") is not true)
-            return;
-        
-        var camera = level.Camera;
-
-        camera.Position = Vector2.Lerp(
-            dynamicData.Get<Vector2?>("startCameraPosition") ?? camera.Position,
-            dynamicData.Get<Vector2?>("endCameraPosition") ?? camera.Position,
-            EngineExtensions.TimeInterp);
-    }
-
-    private static void UpdateRenderersIfModDisabled(RendererList rendererList) {
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
-            DynamicData.For(rendererList).Invoke("Update");
-    }
+    private static bool ModEnabled() => PhysicsPreservingHighFramerateModule.Settings.Enabled;
 
     private static void OverrideBaseUpdate(Level level) {
-        if (level.Paused)
-            return;
+        var levelData = DynamicData.For(level);
+        var engineData = DynamicData.For(Engine.Instance);
+        float timeRate = PhysicsPreservingHighFramerateModule.Settings.GetGameSpeed() / 10f;
+        float rawDeltaTime = Engine.RawDeltaTime;
+        float deltaTime = timeRate * Engine.DeltaTime;
         
-        DynamicData.For(level.Entities).Invoke("Update");
+        engineData.Set("DeltaTime", deltaTime);
 
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled)
-            DynamicData.For(level.RendererList).Invoke("Update");
-    }
-
-    private static void Level_Update(On.Celeste.Level.orig_Update update, Level level) {
-        var dynamicData = DynamicData.For(level);
-
-        if (!PhysicsPreservingHighFramerateModule.Settings.Enabled) {
-            foreach (var component in level.Tracker.GetComponents<Interpolation>())
-                ((Interpolation) component).Reset();
-
-            level.ResetInterpolation();
-            update(level);
-
-            return;
+        foreach (var entity in level.Entities) {
+            if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) != 0)
+                entity.Update();
         }
 
-        foreach (var component in level.Tracker.GetComponents<Interpolation>())
-            ((Interpolation) component).BeforeUpdate();
+        float timeAccumulator = levelData.Get<float?>("timeAccumulator") ?? 0f;
 
-        level.BeforeInterpolationUpdate();
+        timeAccumulator += timeRate * rawDeltaTime;
 
-        bool updateHair = dynamicData.Get<bool>("updateHair");
-
-        dynamicData.Set("updateHair", false);
-        update(level);
-        dynamicData.Set("updateHair", updateHair);
-
-        foreach (var component in level.Tracker.GetComponents<Interpolation>()) {
-            var entity = component.Entity;
+        if (timeAccumulator > ONE_OVER_SIXTY) {
+            engineData.Set("RawDeltaTime", ONE_OVER_SIXTY);
+            engineData.Set("DeltaTime", ONE_OVER_SIXTY * Engine.TimeRate * Engine.TimeRateB * engineData.Invoke<float>("GetTimeRateComponentMultiplier", level));
             
-            if (entity.Active && entity.Visible && (!level.FrozenOrPaused && !level.Transitioning
-                || level.FrozenOrPaused && entity.TagCheck(Tags.PauseUpdate)
-                || level.Frozen && entity.TagCheck(Tags.FrozenUpdate)
-                || level.Transitioning && entity.TagCheck(Tags.TransitionUpdate)))
-                ((Interpolation) component).AfterUpdate();
-            else
-                ((Interpolation) component).Reset();
+            while (timeAccumulator > ONE_OVER_SIXTY) {
+                foreach (var entity in level.Entities) {
+                    if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) == 0)
+                        entity.Update();
+                }
+                
+                timeAccumulator -= ONE_OVER_SIXTY;
+            }
         }
         
-        if (level.FrozenOrPaused)
-            level.ResetInterpolation();
-        else
-            level.AfterInterpolationUpdate();
+        levelData.Set("timeAccumulator", timeAccumulator);
+        engineData.Set("RawDeltaTime", rawDeltaTime);
+        engineData.Set("DeltaTime", deltaTime);
+
+        DynamicData.For(level.RendererList).Invoke("Update");
     }
 
     private static void Level_Update_Il(ILContext il) {
         var cursor = new ILCursor(il);
 
-        while (cursor.TryGotoNext(instr => instr.MatchCallvirt<RendererList>("Update"))) {
-            cursor.Remove();
-            cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(UpdateRenderersIfModDisabled)));
-        }
+        cursor.GotoNext(
+            instr => instr.OpCode == OpCodes.Ldarg_0,
+            instr => instr.MatchCall<Scene>("Update"));
 
-        cursor.Index = 0;
-        cursor.GotoNext(instr => instr.MatchCall<Scene>("Update"));
+        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(ModEnabled)));
 
-        cursor.Remove();
+        var elseLabel = cursor.DefineLabel();
+
+        cursor.Emit(OpCodes.Brtrue_S, elseLabel);
+
+        cursor.GotoNext(MoveType.After, instr => instr.OpCode == OpCodes.Br);
+
+        var endLabel = (ILLabel) cursor.Prev.Operand;
+
+        cursor.MarkLabel(elseLabel);
+        cursor.Emit(OpCodes.Ldarg_0);
         cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(OverrideBaseUpdate)));
-    }
-
-    private static void Level_LoadLevel(On.Celeste.Level.orig_LoadLevel loadLevel, Level level, Player.IntroTypes playerintro, bool isfromloader) {
-        level.ResetInterpolation();
-        loadLevel(level, playerintro, isfromloader);
+        cursor.Emit(OpCodes.Br, endLabel);
     }
 }

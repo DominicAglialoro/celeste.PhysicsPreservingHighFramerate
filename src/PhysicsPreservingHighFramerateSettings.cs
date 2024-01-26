@@ -3,18 +3,16 @@
 public class PhysicsPreservingHighFramerateSettings : EverestModuleSettings {
     private bool enabled;
     private int frameRate = 60;
-    private int gameSpeed = 10;
 
     public bool Enabled {
         get => enabled;
         set {
             enabled = value;
             Celeste.Instance.SetFramerate(GetFramerate());
-            EngineExtensions.SetGameSpeed(GetGameSpeed());
         }
     }
 
-    [SettingRange(10, 999, true)]
+    [SettingRange(60, 999, true)]
     public int FrameRate {
         get => frameRate;
         set {
@@ -24,13 +22,7 @@ public class PhysicsPreservingHighFramerateSettings : EverestModuleSettings {
     }
 
     [SettingRange(1, 50, false)]
-    public int GameSpeed {
-        get => gameSpeed;
-        set {
-            gameSpeed = value;
-            EngineExtensions.SetGameSpeed(GetGameSpeed());
-        }
-    }
+    public int GameSpeed { get; set; } = 10;
 
     public int GetFramerate() => enabled ? FrameRate : 60;
 

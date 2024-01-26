@@ -32,7 +32,7 @@ public class Interpolation : Component {
     public void Reset() => doInterpolate = false;
 
     public void Interpolate() {
-        if (doInterpolate)
-            Entity.Position = Vector2.Lerp(startPosition, endPosition, EngineExtensions.TimeInterp);
+        // if (doInterpolate)
+        //     Entity.Position = Vector2.Lerp(startPosition, endPosition, EngineExtensions.TimeInterp);
     }
 }

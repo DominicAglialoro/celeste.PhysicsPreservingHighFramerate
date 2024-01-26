@@ -20,14 +20,12 @@ public class PhysicsPreservingHighFramerateModule : EverestModule {
     }
 
     public override void Load() {
-        EngineExtensions.Load();
         LevelExtensions.Load();
         SceneExtensions.Load();
         VariousEntityExtensions.Load();
     }
 
     public override void Unload() {
-        EngineExtensions.Unload();
         LevelExtensions.Unload();
         SceneExtensions.Unload();
         VariousEntityExtensions.Unload();
