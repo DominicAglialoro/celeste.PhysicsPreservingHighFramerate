@@ -1,4 +1,5 @@
-﻿using Mono.Cecil.Cil;
+﻿using Microsoft.Xna.Framework;
+using Mono.Cecil.Cil;
 using Monocle;
 using MonoMod.Cil;
 using MonoMod.Utils;
@@ -8,11 +9,22 @@ namespace Celeste.Mod.PhysicsPreservingHighFramerate;
 public static class LevelExtensions {
     private const float ONE_OVER_SIXTY = (float) (166667L * 1E-07);
     
-    public static void Load() => IL.Celeste.Level.Update += Level_Update_Il;
+    public static void Load() {
+        On.Celeste.Level.Update += Level_Update;
+        IL.Celeste.Level.Update += Level_Update_Il;
+        On.Celeste.Level.BeforeRender += Level_BeforeRender;
+        On.Celeste.Level.AfterRender += Level_AfterRender;
+    }
 
-    public static void Unload() => IL.Celeste.Level.Update -= Level_Update_Il;
+    public static void Unload() {
+        On.Celeste.Level.Update -= Level_Update;
+        IL.Celeste.Level.Update -= Level_Update_Il;
+        On.Celeste.Level.BeforeRender -= Level_BeforeRender;
+        On.Celeste.Level.AfterRender -= Level_AfterRender;
+    }
 
-    private static bool ModEnabled() => PhysicsPreservingHighFramerateModule.Settings.Enabled;
+    private static bool ShouldInterpolate(Level level)
+        => PhysicsPreservingHighFramerateModule.Settings.Enabled && !level.FrozenOrPaused && !level.Transitioning;
 
     private static void OverrideBaseUpdate(Level level) {
         var levelData = DynamicData.For(level);
@@ -37,6 +49,9 @@ public static class LevelExtensions {
             engineData.Set("DeltaTime", ONE_OVER_SIXTY * Engine.TimeRate * Engine.TimeRateB * engineData.Invoke<float>("GetTimeRateComponentMultiplier", level));
             
             while (timeAccumulator > ONE_OVER_SIXTY) {
+                foreach (var component in level.Tracker.GetComponents<Interpolation>())
+                    ((Interpolation) component).Record();
+                
                 foreach (var entity in level.Entities) {
                     if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) == 0)
                         entity.Update();
@@ -50,8 +65,31 @@ public static class LevelExtensions {
         }
         
         levelData.Set("timeAccumulator", timeAccumulator);
-
         DynamicData.For(level.RendererList).Invoke("Update");
+    }
+
+    private static void BeforeHairUpdate(Level level) {
+        if (!ShouldInterpolate(level))
+            return;
+        
+        float timeAccumulator = DynamicData.For(level).Get<float?>("timeAccumulator") ?? 0f;
+        
+        level.Tracker.GetEntity<Player>()?.Components.Get<Interpolation>()?.Interpolate(MathHelper.Clamp(timeAccumulator * 60f, 0f, 1f));
+    }
+
+    private static void AfterHairUpdate(Level level) {
+        if (ShouldInterpolate(level))
+            level.Tracker.GetEntity<Player>()?.Components.Get<Interpolation>()?.Restore();
+    }
+
+    private static void Level_Update(On.Celeste.Level.orig_Update update, Level level) {
+        update(level);
+        
+        if (ShouldInterpolate(level))
+            return;
+        
+        foreach (var component in level.Tracker.GetComponents<Interpolation>())
+            ((Interpolation) component).Reset();
     }
 
     private static void Level_Update_Il(ILContext il) {
@@ -61,7 +99,8 @@ public static class LevelExtensions {
             instr => instr.OpCode == OpCodes.Ldarg_0,
             instr => instr.MatchCall<Scene>("Update"));
 
-        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(ModEnabled)));
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(ShouldInterpolate)));
 
         var elseLabel = cursor.DefineLabel();
 
@@ -75,5 +114,38 @@ public static class LevelExtensions {
         cursor.Emit(OpCodes.Ldarg_0);
         cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(OverrideBaseUpdate)));
         cursor.Emit(OpCodes.Br, endLabel);
+
+        cursor.GotoNext(
+            instr => instr.OpCode == OpCodes.Ldloc_S,
+            instr => instr.OpCode == OpCodes.Isinst,
+            instr => instr.MatchCallvirt<PlayerHair>("AfterUpdate"));
+        
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(BeforeHairUpdate)));
+        cursor.Index += 3;
+        cursor.Emit(OpCodes.Ldarg_0);
+        cursor.Emit(OpCodes.Call, typeof(LevelExtensions).GetMethodUnconstrained(nameof(AfterHairUpdate)));
+    }
+
+    private static void Level_BeforeRender(On.Celeste.Level.orig_BeforeRender beforeRender, Level level) {
+        if (ShouldInterpolate(level)) {
+            float timeAccumulator = DynamicData.For(level).Get<float?>("timeAccumulator") ?? 0f;
+            float t = MathHelper.Clamp(timeAccumulator * 60f, 0f, 1f);
+
+            foreach (var component in level.Tracker.GetComponents<Interpolation>())
+                ((Interpolation) component).Interpolate(t);
+        }
+        
+        beforeRender(level);
+    }
+
+    private static void Level_AfterRender(On.Celeste.Level.orig_AfterRender afterRender, Level level) {
+        afterRender(level);
+
+        if (!ShouldInterpolate(level))
+            return;
+        
+        foreach (var component in level.Tracker.GetComponents<Interpolation>())
+            ((Interpolation) component).Restore();
     }
 }
