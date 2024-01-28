@@ -10,6 +10,7 @@ public static class LevelExtensions {
     private const float ONE_OVER_SIXTY = (float) (166667L * 1E-07);
     
     public static void Load() {
+        On.Celeste.Level.ctor += Level_ctor;
         On.Celeste.Level.Update += Level_Update;
         IL.Celeste.Level.Update += Level_Update_Il;
         On.Celeste.Level.BeforeRender += Level_BeforeRender;
@@ -17,6 +18,7 @@ public static class LevelExtensions {
     }
 
     public static void Unload() {
+        On.Celeste.Level.ctor -= Level_ctor;
         On.Celeste.Level.Update -= Level_Update;
         IL.Celeste.Level.Update -= Level_Update_Il;
         On.Celeste.Level.BeforeRender -= Level_BeforeRender;
@@ -40,7 +42,7 @@ public static class LevelExtensions {
                 entity.Update();
         }
 
-        float timeAccumulator = levelData.Get<float?>("timeAccumulator") ?? 0f;
+        float timeAccumulator = levelData.Get<float>("timeAccumulator");
 
         timeAccumulator += timeRate * rawDeltaTime;
 
@@ -51,6 +53,8 @@ public static class LevelExtensions {
             while (timeAccumulator > ONE_OVER_SIXTY) {
                 foreach (var component in level.Tracker.GetComponents<Interpolation>())
                     ((Interpolation) component).Record();
+                
+                levelData.Get<CameraInterpolation>("cameraInterpolation").Record(level.Camera);
                 
                 foreach (var entity in level.Entities) {
                     if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) == 0)
@@ -72,7 +76,7 @@ public static class LevelExtensions {
         if (!ShouldInterpolate(level))
             return;
         
-        float timeAccumulator = DynamicData.For(level).Get<float?>("timeAccumulator") ?? 0f;
+        float timeAccumulator = DynamicData.For(level).Get<float>("timeAccumulator");
         
         level.Tracker.GetEntity<Player>()?.Components.Get<Interpolation>()?.Interpolate(MathHelper.Clamp(timeAccumulator * 60f, 0f, 1f));
     }
@@ -80,6 +84,15 @@ public static class LevelExtensions {
     private static void AfterHairUpdate(Level level) {
         if (ShouldInterpolate(level))
             level.Tracker.GetEntity<Player>()?.Components.Get<Interpolation>()?.Restore();
+    }
+
+    private static void Level_ctor(On.Celeste.Level.orig_ctor ctor, Level level) {
+        ctor(level);
+        
+        var levelData = DynamicData.For(level);
+        
+        levelData.Set("cameraInterpolation", new CameraInterpolation());
+        levelData.Set("timeAccumulator", 0f);
     }
 
     private static void Level_Update(On.Celeste.Level.orig_Update update, Level level) {
@@ -90,6 +103,8 @@ public static class LevelExtensions {
         
         foreach (var component in level.Tracker.GetComponents<Interpolation>())
             ((Interpolation) component).Reset();
+        
+        DynamicData.For(level).Get<CameraInterpolation>("cameraInterpolation").Reset();
     }
 
     private static void Level_Update_Il(ILContext il) {
@@ -129,11 +144,14 @@ public static class LevelExtensions {
 
     private static void Level_BeforeRender(On.Celeste.Level.orig_BeforeRender beforeRender, Level level) {
         if (ShouldInterpolate(level)) {
-            float timeAccumulator = DynamicData.For(level).Get<float?>("timeAccumulator") ?? 0f;
+            var levelData = DynamicData.For(level);
+            float timeAccumulator = levelData.Get<float>("timeAccumulator");
             float t = MathHelper.Clamp(timeAccumulator * 60f, 0f, 1f);
 
             foreach (var component in level.Tracker.GetComponents<Interpolation>())
                 ((Interpolation) component).Interpolate(t);
+
+            levelData.Get<CameraInterpolation>("cameraInterpolation").Interpolate(level.Camera, t);
         }
         
         beforeRender(level);
@@ -147,5 +165,7 @@ public static class LevelExtensions {
         
         foreach (var component in level.Tracker.GetComponents<Interpolation>())
             ((Interpolation) component).Restore();
+        
+        DynamicData.For(level).Get<CameraInterpolation>("cameraInterpolation").Restore(level.Camera);
     }
 }

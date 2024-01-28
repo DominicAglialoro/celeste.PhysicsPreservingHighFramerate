@@ -12,7 +12,7 @@ public class PhysicsPreservingHighFramerateSettings : EverestModuleSettings {
         }
     }
 
-    [SettingRange(60, 999, true)]
+    [SettingRange(60, 240, true)]
     public int FrameRate {
         get => frameRate;
         set {
@@ -21,7 +21,7 @@ public class PhysicsPreservingHighFramerateSettings : EverestModuleSettings {
         }
     }
 
-    [SettingRange(1, 50, false)]
+    [SettingRange(5, 20, false)]
     public int GameSpeed { get; set; } = 10;
 
     public int GetFramerate() => enabled ? FrameRate : 60;
