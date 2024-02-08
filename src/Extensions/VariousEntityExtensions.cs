@@ -26,7 +26,7 @@ public static class VariousEntityExtensions {
         On.Celeste.FinalBossShot.ctor -= FinalBossShot_ctor;
         On.Celeste.Key.ctor_Vector2_EntityID_Vector2Array -= Key_ctor_Vector2_EntityID_Vector2Array;
         On.Celeste.Platform.ctor -= Platform_ctor;
-        On.Celeste.RotateSpinner.ctor += RotateSpinner_ctor;
+        On.Celeste.RotateSpinner.ctor -= RotateSpinner_ctor;
         On.Celeste.Snowball.ctor -= Snowball_ctor;
         On.Celeste.TrackSpinner.ctor -= TrackSpinner_ctor;
     }

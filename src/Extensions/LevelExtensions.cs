@@ -37,10 +37,8 @@ public static class LevelExtensions {
         
         engineData.Set("DeltaTime", deltaTime);
 
-        foreach (var entity in level.Entities) {
-            if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) != 0)
-                entity.Update();
-        }
+        foreach (var entity in level[Tags.HUD])
+            entity.Update();
 
         float timeAccumulator = levelData.Get<float>("timeAccumulator");
 
@@ -57,7 +55,7 @@ public static class LevelExtensions {
                 levelData.Get<CameraInterpolation>("cameraInterpolation").Record(level.Camera);
                 
                 foreach (var entity in level.Entities) {
-                    if ((entity.Tag & (Tags.FrozenUpdate | Tags.PauseUpdate | Tags.TransitionUpdate | Tags.HUD)) == 0)
+                    if ((entity.Tag & Tags.HUD) == 0)
                         entity.Update();
                 }
                 
